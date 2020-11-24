@@ -162,6 +162,7 @@ class FreshnessStatus(StrEnum):
     Pass = 'pass'
     Warn = 'warn'
     Error = 'error'
+    RuntimeError = 'runtime error'
 
 
 @dataclass

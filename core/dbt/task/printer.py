@@ -11,6 +11,8 @@ from dbt.tracking import InvocationProcessor
 from dbt import ui
 from dbt import utils
 
+from dbt.contracts.results import NodeStatus, RunStatus
+
 
 def print_fancy_output_line(
         msg: str, status: str, logger_fn: Callable, index: Optional[int],
@@ -98,13 +100,13 @@ def print_cancel_line(model) -> None:
 
 def get_printable_result(
         result, success: str, error: str) -> Tuple[str, str, Callable]:
-    if result.error is not None:
+    if result.status is RunStatus.Error:
         info = 'ERROR {}'.format(error)
-        status = ui.red(result.status)
+        status = ui.red(result.message)
         logger_fn = logger.error
     else:
         info = 'OK {}'.format(success)
-        status = ui.green(result.status)
+        status = ui.green(result.message)
         logger_fn = logger.info
 
     return info, status, logger_fn
@@ -115,22 +117,23 @@ def print_test_result_line(
 ) -> None:
     model = result.node
 
-    if result.error is not None:
+    if result.status == NodeStatus.Error:
         info = "ERROR"
         color = ui.red
         logger_fn = logger.error
-    elif result.status == 0:
+    elif result.status == NodeStatus.Success:
         info = 'PASS'
         color = ui.green
         logger_fn = logger.info
-    elif result.warn:
-        info = 'WARN {}'.format(result.status)
-        color = ui.yellow
-        logger_fn = logger.warning
-    elif result.fail:
-        info = 'FAIL {}'.format(result.status)
-        color = ui.red
-        logger_fn = logger.error
+    # TODO(kw): handle these cases
+    # elif result.warn:
+    #     info = 'WARN {}'.format(result.status)
+    #     color = ui.yellow
+    #     logger_fn = logger.warning
+    # elif result.fail:
+    #     info = 'FAIL {}'.format(result.status)
+    #     color = ui.red
+    #     logger_fn = logger.error
     else:
         raise RuntimeError("unexpected status: {}".format(result.status))
 
@@ -196,7 +199,8 @@ def print_seed_result_line(result, schema_name: str, index: int, total: int):
 
 
 def print_freshness_result_line(result, index: int, total: int) -> None:
-    if result.error:
+    # TODO(kw) uhhhh what
+    if result.status is RunStatus.Error:
         info = 'ERROR'
         color = ui.red
         logger_fn = logger.error
@@ -237,14 +241,23 @@ def print_freshness_result_line(result, index: int, total: int) -> None:
 
 
 def interpret_run_result(result) -> str:
-    if result.error is not None or result.fail:
+    # TODO(kw): more to handle...
+    # if result.error is not None or result.fail:
+    #     return 'error'
+    # elif result.skipped:
+    #     return 'skip'
+    # elif result.warn:
+    #     return 'warn'
+    # else:
+    #     return 'pass'
+    if result.status is RunStatus.Error:
         return 'error'
-    elif result.skipped:
+    elif result.status is RunStatus.Skipped:
         return 'skip'
-    elif result.warn:
-        return 'warn'
-    else:
+    elif result.status is RunStatus.Success:
         return 'pass'
+    else:
+        raise RuntimeError(f"unhandled result {result}")
 
 
 def print_run_status_line(results) -> None:
@@ -303,7 +316,7 @@ def print_run_result_error(
 
     else:
         first = True
-        for line in result.error.split("\n"):
+        for line in result.message.split("\n"):
             if first:
                 logger.error(ui.yellow(line))
                 first = False
@@ -342,7 +355,8 @@ def print_end_of_run_summary(
 
 
 def print_run_end_messages(results, keyboard_interrupt: bool = False) -> None:
-    errors = [r for r in results if r.error is not None or r.fail]
+    # or r.fail] <- TODO(kw) do we need to handle fail?
+    errors = [r for r in results if r.status is RunStatus.Error]
     warnings = [r for r in results if r.warn]
     with DbtStatusMessage(), InvocationProcessor():
         print_end_of_run_summary(len(errors),
